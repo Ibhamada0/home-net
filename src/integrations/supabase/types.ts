@@ -14,16 +14,287 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      activity_log: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          details: Json | null
+          id: string
+          severity: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          details?: Json | null
+          id?: string
+          severity?: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          details?: Json | null
+          id?: string
+          severity?: string
+        }
+        Relationships: []
+      }
+      customers: {
+        Row: {
+          address: string | null
+          created_at: string
+          expire_at: string | null
+          full_name: string
+          id: string
+          ip_address: string | null
+          mac_address: string | null
+          notes: string | null
+          package_id: string | null
+          password: string
+          phone: string | null
+          service_type: string
+          status: string
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          expire_at?: string | null
+          full_name: string
+          id?: string
+          ip_address?: string | null
+          mac_address?: string | null
+          notes?: string | null
+          package_id?: string | null
+          password: string
+          phone?: string | null
+          service_type?: string
+          status?: string
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          expire_at?: string | null
+          full_name?: string
+          id?: string
+          ip_address?: string | null
+          mac_address?: string | null
+          notes?: string | null
+          package_id?: string | null
+          password?: string
+          phone?: string | null
+          service_type?: string
+          status?: string
+          updated_at?: string
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customers_package_id_fkey"
+            columns: ["package_id"]
+            isOneToOne: false
+            referencedRelation: "packages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          amount: number
+          created_at: string
+          customer_id: string
+          due_date: string | null
+          id: string
+          invoice_number: string
+          notes: string | null
+          package_id: string | null
+          paid_at: string | null
+          status: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          customer_id: string
+          due_date?: string | null
+          id?: string
+          invoice_number?: string
+          notes?: string | null
+          package_id?: string | null
+          paid_at?: string | null
+          status?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          customer_id?: string
+          due_date?: string | null
+          id?: string
+          invoice_number?: string
+          notes?: string | null
+          package_id?: string | null
+          paid_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_package_id_fkey"
+            columns: ["package_id"]
+            isOneToOne: false
+            referencedRelation: "packages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      packages: {
+        Row: {
+          created_at: string
+          description: string | null
+          duration_days: number
+          id: string
+          is_active: boolean
+          name: string
+          price: number
+          service_type: string
+          speed_down_mbps: number
+          speed_up_mbps: number
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          duration_days?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          price?: number
+          service_type?: string
+          speed_down_mbps?: number
+          speed_up_mbps?: number
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          duration_days?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          price?: number
+          service_type?: string
+          speed_down_mbps?: number
+          speed_up_mbps?: number
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          full_name: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          full_name?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
+      router_config: {
+        Row: {
+          created_at: string
+          host: string
+          id: string
+          is_active: boolean
+          last_seen_at: string | null
+          name: string
+          password: string
+          port: number
+          updated_at: string
+          use_https: boolean
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          host: string
+          id?: string
+          is_active?: boolean
+          last_seen_at?: string | null
+          name?: string
+          password: string
+          port?: number
+          updated_at?: string
+          use_https?: boolean
+          username: string
+        }
+        Update: {
+          created_at?: string
+          host?: string
+          id?: string
+          is_active?: boolean
+          last_seen_at?: string | null
+          name?: string
+          password?: string
+          port?: number
+          updated_at?: string
+          use_https?: boolean
+          username?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "staff"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +421,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "staff"],
+    },
   },
 } as const
