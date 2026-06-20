@@ -9,7 +9,7 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthenticatedLayout() {
   const navigate = useNavigate();
-  const [checking, setChecking] = useState(true);
+  const [state, setState] = useState<"checking" | "authed">("checking");
 
   useEffect(() => {
     let mounted = true;
@@ -18,7 +18,7 @@ function AuthenticatedLayout() {
       if (!data.session) {
         navigate({ to: "/auth", replace: true });
       } else {
-        setChecking(false);
+        setState("authed");
       }
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
@@ -27,7 +27,7 @@ function AuthenticatedLayout() {
     return () => { mounted = false; subscription.unsubscribe(); };
   }, [navigate]);
 
-  if (checking) {
+  if (state === "checking") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background" dir="rtl">
         <div className="text-sm text-muted-foreground">جارٍ التحقق...</div>
