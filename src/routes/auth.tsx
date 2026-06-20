@@ -14,33 +14,38 @@ export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "تسجيل الدخول | سيس-نت" }] }),
 });
 
+// Supabase requires an email — we synthesize one from the username.
+const EMAIL_DOMAIN = "sysnet.local";
+const toEmail = (username: string) => `${username.trim().toLowerCase()}@${EMAIL_DOMAIN}`;
+const validUsername = (u: string) => /^[a-zA-Z0-9_.-]{3,30}$/.test(u);
+
 function AuthPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validUsername(username)) return toast.error("اسم المستخدم يجب أن يكون 3-30 حرف إنجليزي/أرقام");
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email: toEmail(username), password });
     setLoading(false);
-    if (error) return toast.error("فشل تسجيل الدخول: " + error.message);
+    if (error) return toast.error("فشل تسجيل الدخول: اسم المستخدم أو كلمة المرور غير صحيحة");
     toast.success("مرحباً بعودتك!");
     navigate({ to: "/dashboard" });
   };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validUsername(username)) return toast.error("اسم المستخدم يجب أن يكون 3-30 حرف إنجليزي/أرقام");
+    if (password.length < 6) return toast.error("كلمة المرور 6 أحرف على الأقل");
     setLoading(true);
     const { error } = await supabase.auth.signUp({
-      email,
+      email: toEmail(username),
       password,
-      options: {
-        emailRedirectTo: window.location.origin,
-        data: { full_name: fullName },
-      },
+      options: { data: { full_name: fullName, username } },
     });
     setLoading(false);
     if (error) return toast.error("فشل إنشاء الحساب: " + error.message);
@@ -74,12 +79,12 @@ function AuthPage() {
               <TabsContent value="login">
                 <form onSubmit={handleLogin} className="space-y-4 mt-4">
                   <div className="space-y-2">
-                    <Label>البريد الإلكتروني</Label>
-                    <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} dir="ltr" />
+                    <Label>اسم المستخدم</Label>
+                    <Input required value={username} onChange={(e) => setUsername(e.target.value)} dir="ltr" placeholder="admin" autoComplete="username" />
                   </div>
                   <div className="space-y-2">
                     <Label>كلمة المرور</Label>
-                    <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} dir="ltr" />
+                    <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} dir="ltr" autoComplete="current-password" />
                   </div>
                   <Button type="submit" className="w-full" disabled={loading}>
                     {loading ? "جارٍ الدخول..." : "تسجيل الدخول"}
@@ -94,12 +99,12 @@ function AuthPage() {
                     <Input required value={fullName} onChange={(e) => setFullName(e.target.value)} />
                   </div>
                   <div className="space-y-2">
-                    <Label>البريد الإلكتروني</Label>
-                    <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} dir="ltr" />
+                    <Label>اسم المستخدم</Label>
+                    <Input required value={username} onChange={(e) => setUsername(e.target.value)} dir="ltr" placeholder="admin" autoComplete="username" />
                   </div>
                   <div className="space-y-2">
                     <Label>كلمة المرور</Label>
-                    <Input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} dir="ltr" />
+                    <Input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} dir="ltr" autoComplete="new-password" />
                   </div>
                   <Button type="submit" className="w-full" disabled={loading}>
                     {loading ? "جارٍ الإنشاء..." : "إنشاء حساب"}
