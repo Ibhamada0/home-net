@@ -14,7 +14,7 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/billing")({
   component: BillingPage,
-  head: () => ({ meta: [{ title: "الفواتير | سيس-نت" }] }),
+  head: () => ({ meta: [{ title: "الفواتير | Home Net" }] }),
 });
 
 function BillingPage() {

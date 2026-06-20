@@ -7,7 +7,7 @@ import { Wifi } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/hotspot")({
   component: HotspotPage,
-  head: () => ({ meta: [{ title: "هوت سبوت | سيس-نت" }] }),
+  head: () => ({ meta: [{ title: "هوت سبوت | Home Net" }] }),
 });
 
 function HotspotPage() {

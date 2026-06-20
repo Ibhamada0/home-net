@@ -5,7 +5,7 @@ import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianG
 
 export const Route = createFileRoute("/_authenticated/monitoring")({
   component: MonitoringPage,
-  head: () => ({ meta: [{ title: "المراقبة الحية | سيس-نت" }] }),
+  head: () => ({ meta: [{ title: "المراقبة الحية | Home Net" }] }),
 });
 
 const cpuData = Array.from({ length: 20 }, (_, i) => ({ t: i, cpu: 10 + Math.random() * 30, mem: 40 + Math.random() * 20 }));

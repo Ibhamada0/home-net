@@ -7,7 +7,7 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianG
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
-  head: () => ({ meta: [{ title: "لوحة التحكم | سيس-نت" }] }),
+  head: () => ({ meta: [{ title: "لوحة التحكم | Home Net" }] }),
 });
 
 // Generate mock live traffic data
@@ -154,7 +154,7 @@ function Dashboard() {
               {(stats?.logs ?? []).length === 0 && (
                 <>
                   <div className="text-xs border-r-2 border-primary/50 pr-3">
-                    <p className="text-zinc-200">مرحباً بك في نظام سيس-نت 👋</p>
+                    <p className="text-zinc-200">مرحباً بك في نظام Home Net 👋</p>
                     <span className="text-zinc-500 text-[10px]">ابدأ بإضافة باقات ومستخدمين</span>
                   </div>
                 </>

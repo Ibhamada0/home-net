@@ -15,7 +15,7 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/users")({
   component: UsersPage,
-  head: () => ({ meta: [{ title: "مستخدمي PPPoE | سيس-نت" }] }),
+  head: () => ({ meta: [{ title: "مستخدمي PPPoE | Home Net" }] }),
 });
 
 type Customer = {

@@ -45,7 +45,7 @@ function AppSidebar() {
             <Wifi className="size-5 text-primary-foreground" />
           </div>
           <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-            <div className="font-bold text-sidebar-foreground tracking-tight">سيس-نت</div>
+            <div className="font-bold text-sidebar-foreground tracking-tight">Home Net</div>
             <div className="text-[10px] text-muted-foreground">إدارة مايكروتيك</div>
           </div>
         </div>
