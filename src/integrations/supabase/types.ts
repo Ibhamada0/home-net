@@ -41,6 +41,47 @@ export type Database = {
         }
         Relationships: []
       }
+      blocked_domains: {
+        Row: {
+          created_at: string
+          domain: string
+          id: string
+          is_active: boolean
+          note: string | null
+          package_id: string | null
+          scope: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          domain: string
+          id?: string
+          is_active?: boolean
+          note?: string | null
+          package_id?: string | null
+          scope: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          domain?: string
+          id?: string
+          is_active?: boolean
+          note?: string | null
+          package_id?: string | null
+          scope?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blocked_domains_package_id_fkey"
+            columns: ["package_id"]
+            isOneToOne: false
+            referencedRelation: "packages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           address: string | null
@@ -264,6 +305,47 @@ export type Database = {
           username?: string
         }
         Relationships: []
+      }
+      traffic_usage: {
+        Row: {
+          created_at: string
+          customer_id: string
+          download_bytes: number
+          id: string
+          last_synced_at: string
+          period_start: string
+          updated_at: string
+          upload_bytes: number
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          download_bytes?: number
+          id?: string
+          last_synced_at?: string
+          period_start?: string
+          updated_at?: string
+          upload_bytes?: number
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          download_bytes?: number
+          id?: string
+          last_synced_at?: string
+          period_start?: string
+          updated_at?: string
+          upload_bytes?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "traffic_usage_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
