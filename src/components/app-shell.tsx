@@ -14,9 +14,10 @@ import {
   SidebarFooter,
   SidebarHeader,
 } from "@/components/ui/sidebar";
-import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { signOut } from "@/lib/local-auth";
+import { db } from "@/lib/local-db";
 
 const items = [
   { title: "لوحة التحكم", url: "/dashboard", icon: LayoutDashboard },
@@ -34,8 +35,8 @@ function AppSidebar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    signOut();
     navigate({ to: "/auth", replace: true });
   };
 
@@ -48,7 +49,7 @@ function AppSidebar() {
           </div>
           <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
             <div className="font-bold text-sidebar-foreground tracking-tight">Home Net</div>
-            <div className="text-[10px] text-muted-foreground">إدارة مايكروتيك</div>
+            <div className="text-[10px] text-muted-foreground">إدارة مايكروتيك (محلي)</div>
           </div>
         </div>
       </SidebarHeader>
@@ -78,8 +79,8 @@ function AppSidebar() {
       <SidebarFooter className="border-t border-sidebar-border">
         <div className="p-2 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
           <div className="bg-muted rounded-md p-2 ring-1 ring-black/5 mb-2">
-            <div className="text-[10px] uppercase tracking-wider mb-1">إصدار النظام</div>
-            <div className="text-xs font-semibold text-sidebar-foreground">RouterOS 7.x</div>
+            <div className="text-[10px] uppercase tracking-wider mb-1">الوضع</div>
+            <div className="text-xs font-semibold text-sidebar-foreground">محلي - بدون كلاود</div>
           </div>
         </div>
         <Button variant="ghost" size="sm" onClick={handleLogout} className="justify-start gap-2">
@@ -95,8 +96,8 @@ function TopBar() {
   const { data: router } = useQuery({
     queryKey: ["router-config"],
     queryFn: async () => {
-      const { data } = await supabase.from("router_config").select("*").eq("is_active", true).maybeSingle();
-      return data;
+      const all = await db.router_config.toArray();
+      return all.find((c) => c.is_active) ?? all[0] ?? null;
     },
   });
 
@@ -108,7 +109,7 @@ function TopBar() {
           <div className="flex items-center gap-2">
             <div className={`size-2 rounded-full ${router ? "bg-success animate-pulse" : "bg-muted-foreground"}`} />
             <span className="text-sm font-medium text-muted-foreground">
-              {router ? "الراوتر متصل" : "لم يتم إعداد الراوتر"}
+              {router ? "الراوتر معدّ" : "لم يتم إعداد الراوتر"}
             </span>
           </div>
           {router && (

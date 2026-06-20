@@ -1,15 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db, uid, exportBackup, importBackup } from "@/lib/local-db";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Router, Save, Info, Wifi, Cloud } from "lucide-react";
+import { Router, Save, Info, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -17,73 +16,93 @@ export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({ meta: [{ title: "إعدادات الراوتر | Home Net" }] }),
 });
 
-type Mode = "local" | "cloud";
-
 function SettingsPage() {
   const qc = useQueryClient();
   const { data: config } = useQuery({
     queryKey: ["router-config-edit"],
-    queryFn: async () => {
-      const { data } = await supabase.from("router_config").select("*").maybeSingle();
-      return data as any;
-    },
+    queryFn: async () => (await db.router_config.toArray())[0] ?? null,
   });
 
   const [form, setForm] = useState({
     name: "Main Router",
-    connection_mode: "local" as Mode,
     host: "192.168.88.1",
-    port: 8728,
-    cloud_hostname: "",
+    port: 80,
     username: "admin",
     password: "",
     use_https: false,
     is_active: true,
+    proxy_url: "http://localhost:8080",
   });
 
   useEffect(() => {
     if (config) setForm({
       name: config.name,
-      connection_mode: (config.connection_mode ?? "local") as Mode,
       host: config.host,
       port: config.port,
-      cloud_hostname: config.cloud_hostname ?? "",
       username: config.username,
       password: config.password,
       use_https: config.use_https,
       is_active: config.is_active,
+      proxy_url: config.proxy_url || "http://localhost:8080",
     });
   }, [config]);
 
   const save = useMutation({
     mutationFn: async () => {
-      const payload = { ...form };
+      const payload = { ...form, connection_mode: "local" as const, cloud_hostname: null };
       if (config) {
-        const { error } = await supabase.from("router_config").update(payload as any).eq("id", config.id);
-        if (error) throw error;
+        await db.router_config.update(config.id, payload);
       } else {
-        const { error } = await supabase.from("router_config").insert(payload as any);
-        if (error) throw error;
+        await db.router_config.add({
+          id: uid(),
+          ...payload,
+          created_at: new Date().toISOString(),
+        });
       }
+      localStorage.setItem("homenet_proxy_url", form.proxy_url);
     },
     onSuccess: () => { qc.invalidateQueries(); toast.success("تم حفظ الإعدادات"); },
     onError: (e: Error) => toast.error(e.message),
   });
 
-  const setMode = (m: Mode) => {
-    setForm((f) => ({
-      ...f,
-      connection_mode: m,
-      // Defaults per mode
-      port: m === "local" ? (f.use_https ? 443 : 8728) : (f.use_https ? 443 : 80),
-    }));
+  const testProxy = async () => {
+    try {
+      const r = await fetch(`${form.proxy_url}/health`);
+      if (r.ok) toast.success("البروكسي يعمل ✓");
+      else toast.error(`البروكسي رد بـ ${r.status}`);
+    } catch {
+      toast.error("لا يمكن الوصول للبروكسي — تأكد أنه شغّال");
+    }
+  };
+
+  const doExport = async () => {
+    const data = await exportBackup();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `homenet-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+  };
+
+  const doImport = async (file: File) => {
+    if (!confirm("سيتم استبدال كل البيانات الحالية. متأكد؟")) return;
+    try {
+      const data = JSON.parse(await file.text());
+      await importBackup(data);
+      qc.invalidateQueries();
+      toast.success("تم استيراد النسخة الاحتياطية");
+    } catch (e: any) {
+      toast.error("ملف غير صالح: " + e.message);
+    }
   };
 
   return (
     <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold">إعدادات الراوتر</h1>
-        <p className="text-sm text-muted-foreground mt-1">اختر طريقة الربط مع MikroTik: محلي عبر منفذ الـ API أو عن بُعد مجاناً عبر Cloudflare Tunnel / ngrok</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          الاتصال محلي عبر البروكسي الصغير على جهازك — بدون كلاود ولا سيرفر.
+        </p>
       </div>
 
       <Card>
@@ -92,80 +111,40 @@ function SettingsPage() {
             <div className="size-10 rounded-lg bg-primary/10 grid place-items-center"><Router className="size-5 text-primary" /></div>
             <div>
               <CardTitle>اتصال الراوتر</CardTitle>
-              <CardDescription>بيانات الدخول إلى MikroTik RouterOS</CardDescription>
+              <CardDescription>بيانات الدخول إلى MikroTik REST API عبر البروكسي المحلي</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={(e) => { e.preventDefault(); save.mutate(); }} className="space-y-5">
-            <Tabs value={form.connection_mode} onValueChange={(v) => setMode(v as Mode)}>
-              <TabsList className="grid grid-cols-2 w-full">
-                <TabsTrigger value="local" className="gap-2"><Wifi className="size-4" /> محلي (LAN)</TabsTrigger>
-                <TabsTrigger value="cloud" className="gap-2"><Cloud className="size-4" /> نفق مجاني (Tunnel)</TabsTrigger>
-              </TabsList>
+            <Alert>
+              <Info className="size-4" />
+              <AlertTitle>طريقة التشغيل</AlertTitle>
+              <AlertDescription className="text-xs leading-relaxed mt-2 space-y-1">
+                <div>1. فعّل REST API على الراوتر: <code className="font-mono">/ip service enable www</code></div>
+                <div>2. شغّل البروكسي على جهازك: <code className="font-mono">node local-proxy/proxy.mjs</code></div>
+                <div>3. تأكد أن العنوان وبيانات الدخول صحيحة هنا واضغط "اختبار البروكسي".</div>
+              </AlertDescription>
+            </Alert>
 
-              <TabsContent value="local" className="space-y-4 mt-4">
-                <Alert>
-                  <Info className="size-4" />
-                  <AlertTitle>الوضع المحلي</AlertTitle>
-                  <AlertDescription className="text-xs leading-relaxed mt-2">
-                    اتصال مباشر بـ MikroTik داخل نفس الشبكة عبر منفذ الـ API. فعّل الخدمة من
-                    <code className="font-mono mx-1">/ip service enable api</code>
-                    (المنفذ الافتراضي 8728) أو <code className="font-mono">api-ssl</code> (8729).
-                  </AlertDescription>
-                </Alert>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-2 space-y-2">
-                    <Label>عنوان IP المحلي</Label>
-                    <Input required placeholder="192.168.88.1" value={form.host}
-                      onChange={(e) => setForm({ ...form, host: e.target.value })} dir="ltr" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>منفذ API</Label>
-                    <Input type="number" required value={form.port}
-                      onChange={(e) => setForm({ ...form, port: +e.target.value })} dir="ltr" />
-                  </div>
-                </div>
-              </TabsContent>
+            <div className="space-y-2">
+              <Label>عنوان البروكسي المحلي</Label>
+              <div className="flex gap-2">
+                <Input required value={form.proxy_url} onChange={(e) => setForm({ ...form, proxy_url: e.target.value })} dir="ltr" />
+                <Button type="button" variant="outline" onClick={testProxy}>اختبار</Button>
+              </div>
+            </div>
 
-              <TabsContent value="cloud" className="space-y-4 mt-4">
-                <Alert>
-                  <Info className="size-4" />
-                  <AlertTitle>عن بُعد عبر نفق مجاني (بدون VPS وبدون IP عام)</AlertTitle>
-                  <AlertDescription className="text-xs leading-relaxed mt-2 space-y-2">
-                    <p>اختر إحدى الخدمتين المجانيتين على جهاز داخل نفس شبكة الراوتر (راوتر آخر، Raspberry Pi، أو أي PC):</p>
-                    <div>
-                      <strong>1) Cloudflare Tunnel (مجاني دائم):</strong>
-                      <code className="block font-mono mt-1 ltr:text-left" dir="ltr">
-                        cloudflared tunnel --url tcp://192.168.88.1:8728
-                      </code>
-                      <p className="mt-1">سيعطيك رابط مثل <code className="font-mono">xxx.trycloudflare.com</code> — استخدمه عبر <code className="font-mono">cloudflared access tcp</code> على جانب الخادم.</p>
-                    </div>
-                    <div>
-                      <strong>2) ngrok (مجاني):</strong>
-                      <code className="block font-mono mt-1 ltr:text-left" dir="ltr">
-                        ngrok tcp 192.168.88.1:8728
-                      </code>
-                      <p className="mt-1">سيعطيك عنواناً مثل <code className="font-mono">0.tcp.ngrok.io</code> ومنفذاً مثل <code className="font-mono">17234</code> — ضعهما أدناه.</p>
-                    </div>
-                  </AlertDescription>
-                </Alert>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-2 space-y-2">
-                    <Label>عنوان النفق (Tunnel Host)</Label>
-                    <Input required={form.connection_mode === "cloud"} placeholder="0.tcp.ngrok.io"
-                      value={form.cloud_hostname}
-                      onChange={(e) => setForm({ ...form, cloud_hostname: e.target.value, host: e.target.value })}
-                      dir="ltr" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>المنفذ</Label>
-                    <Input type="number" required value={form.port}
-                      onChange={(e) => setForm({ ...form, port: +e.target.value })} dir="ltr" />
-                  </div>
-                </div>
-              </TabsContent>
-            </Tabs>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2 space-y-2">
+                <Label>عنوان IP للراوتر</Label>
+                <Input required placeholder="192.168.88.1" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} dir="ltr" />
+              </div>
+              <div className="space-y-2">
+                <Label>منفذ REST</Label>
+                <Input type="number" required value={form.port} onChange={(e) => setForm({ ...form, port: +e.target.value })} dir="ltr" />
+              </div>
+            </div>
 
             <div className="space-y-2">
               <Label>اسم الراوتر</Label>
@@ -185,16 +164,10 @@ function SettingsPage() {
 
             <div className="flex items-center justify-between pt-2 border-t">
               <div>
-                <Label>استخدام TLS/SSL</Label>
-                <p className="text-xs text-muted-foreground">
-                  {form.connection_mode === "local" ? "api-ssl منفذ 8729" : "موصى به مع Cloudflare Tunnel"}
-                </p>
+                <Label>استخدام HTTPS</Label>
+                <p className="text-xs text-muted-foreground">للاتصال عبر <code>www-ssl</code> (المنفذ 443)</p>
               </div>
-              <Switch checked={form.use_https}
-                onCheckedChange={(v) => setForm({
-                  ...form, use_https: v,
-                  port: form.connection_mode === "local" ? (v ? 8729 : 8728) : (v ? 443 : 80),
-                })} />
+              <Switch checked={form.use_https} onCheckedChange={(v) => setForm({ ...form, use_https: v, port: v ? 443 : 80 })} />
             </div>
 
             <div className="flex items-center justify-between">
@@ -206,6 +179,20 @@ function SettingsPage() {
               <Save className="size-4 ml-1" /> {save.isPending ? "جارٍ الحفظ..." : "حفظ الإعدادات"}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>النسخ الاحتياطي</CardTitle>
+          <CardDescription>تصدير أو استيراد كل بياناتك المحلية (عملاء، باقات، فواتير...)</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col sm:flex-row gap-3">
+          <Button variant="outline" onClick={doExport}><Download className="size-4 ml-1" /> تصدير</Button>
+          <label className="inline-flex">
+            <input type="file" accept="application/json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) doImport(f); e.target.value = ""; }} />
+            <span className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent cursor-pointer"><Upload className="size-4 ml-1" /> استيراد</span>
+          </label>
         </CardContent>
       </Card>
     </div>

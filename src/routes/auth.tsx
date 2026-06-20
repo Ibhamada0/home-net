@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { signIn, signUp } from "@/lib/local-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,11 +14,6 @@ export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "تسجيل الدخول | Home Net" }] }),
 });
 
-// Supabase requires an email — we synthesize one from the username.
-const EMAIL_DOMAIN = "sysnet.local";
-const toEmail = (username: string) => `${username.trim().toLowerCase()}@${EMAIL_DOMAIN}`;
-const validUsername = (u: string) => /^[a-zA-Z0-9_.-]{3,30}$/.test(u);
-
 function AuthPage() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -28,29 +23,30 @@ function AuthPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validUsername(username)) return toast.error("اسم المستخدم يجب أن يكون 3-30 حرف إنجليزي/أرقام");
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email: toEmail(username), password });
-    setLoading(false);
-    if (error) return toast.error("فشل تسجيل الدخول: اسم المستخدم أو كلمة المرور غير صحيحة");
-    toast.success("مرحباً بعودتك!");
-    navigate({ to: "/dashboard" });
+    try {
+      await signIn(username, password);
+      toast.success("مرحباً بعودتك!");
+      navigate({ to: "/dashboard" });
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validUsername(username)) return toast.error("اسم المستخدم يجب أن يكون 3-30 حرف إنجليزي/أرقام");
-    if (password.length < 6) return toast.error("كلمة المرور 6 أحرف على الأقل");
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
-      email: toEmail(username),
-      password,
-      options: { data: { full_name: fullName, username } },
-    });
-    setLoading(false);
-    if (error) return toast.error("فشل إنشاء الحساب: " + error.message);
-    toast.success("تم إنشاء الحساب بنجاح!");
-    navigate({ to: "/dashboard" });
+    try {
+      await signUp({ username, password, full_name: fullName });
+      toast.success("تم إنشاء الحساب بنجاح!");
+      navigate({ to: "/dashboard" });
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -61,13 +57,15 @@ function AuthPage() {
             <Wifi className="size-7 text-primary-foreground" />
           </div>
           <h1 className="text-2xl font-bold">Home Net</h1>
-          <p className="text-sm text-muted-foreground mt-1">نظام إدارة راوترات مايكروتيك</p>
+          <p className="text-sm text-muted-foreground mt-1">نظام محلي لإدارة راوترات مايكروتيك</p>
         </div>
 
         <Card>
           <CardHeader>
             <CardTitle>أهلاً بك</CardTitle>
-            <CardDescription>سجل دخولك أو أنشئ حساب جديد للمتابعة</CardDescription>
+            <CardDescription>
+              الافتراضي: <code className="font-mono">admin / admin</code>
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="login">
