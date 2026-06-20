@@ -1,5 +1,5 @@
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { LayoutDashboard, Users, Wifi, Package, Receipt, Activity, Settings, LogOut, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Users, Wifi, Package, Receipt, Activity, Settings, LogOut, ShieldCheck, Gauge } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   Sidebar,
@@ -25,6 +25,7 @@ const items = [
   { title: "الباقات", url: "/packages", icon: Package },
   { title: "الفواتير", url: "/billing", icon: Receipt },
   { title: "المراقبة الحية", url: "/monitoring", icon: Activity },
+  { title: "استهلاك وفلترة", url: "/traffic", icon: Gauge },
   { title: "إعدادات الراوتر", url: "/settings", icon: Settings },
   { title: "إدارة المستخدمين", url: "/admin-users", icon: ShieldCheck },
 ];
