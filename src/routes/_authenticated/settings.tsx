@@ -187,7 +187,7 @@ function SettingsPage() {
               <div>
                 <Label>استخدام TLS/SSL</Label>
                 <p className="text-xs text-muted-foreground">
-                  {form.connection_mode === "local" ? "api-ssl منفذ 8729" : "موصى به لتشفير الاتصال السحابي"}
+                  {form.connection_mode === "local" ? "api-ssl منفذ 8729" : "موصى به مع Cloudflare Tunnel"}
                 </p>
               </div>
               <Switch checked={form.use_https}
