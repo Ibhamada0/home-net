@@ -49,6 +49,24 @@ function fmtBytes(n: number) {
   return `${(n / Math.pow(1024, i)).toFixed(2)} ${u[i]}`;
 }
 
+const PROXY = (() => {
+  try {
+    return localStorage.getItem("homenet_proxy_url") || "http://localhost:8080";
+  } catch {
+    return "http://localhost:8080";
+  }
+})();
+
+async function mtk(path: string, init?: RequestInit) {
+  const res = await fetch(`${PROXY}${path}`, {
+    ...init,
+    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+  });
+  if (!res.ok) throw new Error(`Router ${path} ${res.status}: ${await res.text().catch(() => "")}`);
+  return res.status === 204 ? null : await res.json();
+}
+
+
 function TrafficPage() {
   const qc = useQueryClient();
 
@@ -75,19 +93,58 @@ function TrafficPage() {
 
   const sync = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("mikrotik-sync", {
-        body: { action: "sync_traffic" },
-      });
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-      return data;
+      // Pull active sessions directly from local router via proxy
+      const [ppp, hs] = await Promise.all([
+        mtk("/rest/ppp/active").catch(() => []),
+        mtk("/rest/ip/hotspot/active").catch(() => []),
+      ]);
+      const sessions = [
+        ...(Array.isArray(ppp) ? ppp : []),
+        ...(Array.isArray(hs) ? hs : []),
+      ];
+      const byName = new Map<string, { up: number; down: number }>();
+      for (const s of sessions) {
+        const name = s.name ?? s.user;
+        if (!name) continue;
+        const up = Number(s["bytes-out"] ?? s.bytes_out ?? 0);
+        const down = Number(s["bytes-in"] ?? s.bytes_in ?? 0);
+        const cur = byName.get(name) ?? { up: 0, down: 0 };
+        byName.set(name, { up: cur.up + up, down: cur.down + down });
+      }
+      const { data: customers } = await supabase.from("customers").select("id, username");
+      const periodStart = new Date(
+        new Date().getFullYear(),
+        new Date().getMonth(),
+        1,
+      ).toISOString();
+      let updated = 0;
+      for (const c of customers ?? []) {
+        const t = byName.get(c.username);
+        if (!t) continue;
+        const { error } = await supabase.from("traffic_usage").upsert(
+          {
+            customer_id: c.id,
+            period_start: periodStart,
+            upload_bytes: t.up,
+            download_bytes: t.down,
+            last_synced_at: new Date().toISOString(),
+          },
+          { onConflict: "customer_id,period_start" },
+        );
+        if (!error) updated++;
+      }
+      return { sessions: sessions.length, updated };
     },
-    onSuccess: (d: any) => {
-      toast.success(`تمت المزامنة (${d?.updated ?? 0} عميل)`);
+    onSuccess: (d) => {
+      toast.success(`تمت المزامنة (${d.updated} عميل من ${d.sessions} جلسة)`);
       qc.invalidateQueries({ queryKey: ["traffic_usage"] });
     },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) =>
+      toast.error(
+        `${e.message} — تأكد أن البروكسي المحلي يعمل على ${PROXY}`,
+      ),
   });
+
 
   // ---------- filters ----------
   const { data: domains } = useQuery({
@@ -158,16 +215,58 @@ function TrafficPage() {
 
   const applyFilters = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("mikrotik-sync", {
-        body: { action: "apply_filters" },
-      });
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-      return data;
+      const LIST = "homenet-blocked";
+      // 1) clear existing entries in our list
+      const existing = await mtk(
+        `/rest/ip/firewall/address-list?list=${LIST}`,
+      ).catch(() => []);
+      for (const row of existing ?? []) {
+        await mtk(`/rest/ip/firewall/address-list/${row[".id"]}`, {
+          method: "DELETE",
+        }).catch(() => null);
+      }
+      // 2) add active global domains
+      const { data: doms } = await supabase
+        .from("blocked_domains")
+        .select("domain")
+        .eq("scope", "global")
+        .eq("is_active", true);
+      let added = 0;
+      for (const d of doms ?? []) {
+        try {
+          await mtk("/rest/ip/firewall/address-list", {
+            method: "PUT",
+            body: JSON.stringify({ list: LIST, address: d.domain, comment: "homenet" }),
+          });
+          added++;
+        } catch {
+          /* ignore individual failures (e.g. duplicate) */
+        }
+      }
+      // 3) ensure drop rule exists
+      const rules = await mtk(
+        `/rest/ip/firewall/filter?comment=homenet-block`,
+      ).catch(() => []);
+      if (!rules || rules.length === 0) {
+        await mtk("/rest/ip/firewall/filter", {
+          method: "PUT",
+          body: JSON.stringify({
+            chain: "forward",
+            action: "drop",
+            "dst-address-list": LIST,
+            comment: "homenet-block",
+          }),
+        }).catch(() => null);
+      }
+      return { added };
     },
-    onSuccess: (d: any) => toast.success(`تم تطبيق ${d?.added ?? 0} قاعدة على الراوتر`),
-    onError: (e: any) => toast.error(e.message),
+    onSuccess: (d) => toast.success(`تم تطبيق ${d.added} قاعدة على الراوتر`),
+    onError: (e: any) =>
+      toast.error(
+        `${e.message} — تأكد أن البروكسي المحلي يعمل على ${PROXY}`,
+      ),
   });
+
 
   return (
     <AppShell>
