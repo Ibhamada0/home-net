@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/local-db";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Wifi } from "lucide-react";
@@ -14,8 +14,14 @@ function HotspotPage() {
   const { data: users = [] } = useQuery({
     queryKey: ["customers", "hotspot"],
     queryFn: async () => {
-      const { data } = await supabase.from("customers").select("*, packages(name, price)").eq("service_type", "hotspot").order("created_at", { ascending: false });
-      return data ?? [];
+      const [cs, pkgs] = await Promise.all([
+        db.customers.where("service_type").equals("hotspot").toArray(),
+        db.packages.toArray(),
+      ]);
+      const pMap = new Map(pkgs.map((p) => [p.id, p]));
+      return cs
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .map((c) => ({ ...c, packages: c.package_id ? pMap.get(c.package_id) ?? null : null }));
     },
   });
 

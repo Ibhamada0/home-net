@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { getSession, onAuthChange, ensureBootstrap } from "@/lib/local-auth";
 import { AppShell } from "@/components/app-shell";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -13,18 +13,16 @@ function AuthenticatedLayout() {
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
+    ensureBootstrap().then(() => {
       if (!mounted) return;
-      if (!data.session) {
-        navigate({ to: "/auth", replace: true });
-      } else {
-        setState("authed");
-      }
+      const s = getSession();
+      if (!s) navigate({ to: "/auth", replace: true });
+      else setState("authed");
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (!session) navigate({ to: "/auth", replace: true });
+    const off = onAuthChange((s) => {
+      if (!s) navigate({ to: "/auth", replace: true });
     });
-    return () => { mounted = false; subscription.unsubscribe(); };
+    return () => { mounted = false; off(); };
   }, [navigate]);
 
   if (state === "checking") {

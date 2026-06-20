@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db, uid, type Package } from "@/lib/local-db";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,18 +21,15 @@ export const Route = createFileRoute("/_authenticated/packages")({
 function PackagesPage() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
+  const [editing, setEditing] = useState<Package | null>(null);
 
   const { data: packages = [] } = useQuery({
     queryKey: ["packages-all"],
-    queryFn: async () => {
-      const { data } = await supabase.from("packages").select("*").order("price");
-      return data ?? [];
-    },
+    queryFn: async () => (await db.packages.toArray()).sort((a, b) => a.price - b.price),
   });
 
   const del = useMutation({
-    mutationFn: async (id: string) => { const { error } = await supabase.from("packages").delete().eq("id", id); if (error) throw error; },
+    mutationFn: async (id: string) => { await db.packages.delete(id); },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["packages-all"] }); toast.success("تم الحذف"); },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -51,7 +48,7 @@ function PackagesPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {packages.map((p: any) => (
+        {packages.map((p) => (
           <Card key={p.id} className={!p.is_active ? "opacity-60" : ""}>
             <CardHeader className="pb-3 flex flex-row items-start justify-between space-y-0">
               <div>
@@ -77,12 +74,19 @@ function PackagesPage() {
             </CardContent>
           </Card>
         ))}
+        {packages.length === 0 && (
+          <Card className="md:col-span-2 lg:col-span-3">
+            <CardContent className="p-12 text-center text-muted-foreground text-sm">
+              لا توجد باقات بعد — اضغط "باقة جديدة"
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
 }
 
-function PackageForm({ editing, onClose }: { editing: any; onClose: () => void }) {
+function PackageForm({ editing, onClose }: { editing: Package | null; onClose: () => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
     name: editing?.name ?? "",
@@ -90,7 +94,7 @@ function PackageForm({ editing, onClose }: { editing: any; onClose: () => void }
     speed_up_mbps: editing?.speed_up_mbps ?? 2,
     price: editing?.price ?? 100,
     duration_days: editing?.duration_days ?? 30,
-    service_type: editing?.service_type ?? "pppoe",
+    service_type: (editing?.service_type ?? "pppoe") as Package["service_type"],
     description: editing?.description ?? "",
     is_active: editing?.is_active ?? true,
   });
@@ -98,11 +102,13 @@ function PackageForm({ editing, onClose }: { editing: any; onClose: () => void }
   const save = useMutation({
     mutationFn: async () => {
       if (editing) {
-        const { error } = await supabase.from("packages").update(form).eq("id", editing.id);
-        if (error) throw error;
+        await db.packages.update(editing.id, form);
       } else {
-        const { error } = await supabase.from("packages").insert(form);
-        if (error) throw error;
+        await db.packages.add({
+          id: uid(),
+          ...form,
+          created_at: new Date().toISOString(),
+        });
       }
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["packages-all"] }); toast.success("تم الحفظ"); onClose(); },
@@ -124,7 +130,7 @@ function PackageForm({ editing, onClose }: { editing: any; onClose: () => void }
         </div>
         <div className="space-y-2">
           <Label>نوع الخدمة</Label>
-          <Select value={form.service_type} onValueChange={(v) => setForm({ ...form, service_type: v })}>
+          <Select value={form.service_type} onValueChange={(v) => setForm({ ...form, service_type: v as Package["service_type"] })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="pppoe">PPPoE</SelectItem>
@@ -132,7 +138,7 @@ function PackageForm({ editing, onClose }: { editing: any; onClose: () => void }
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2"><Label>الوصف</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+        <div className="space-y-2"><Label>الوصف</Label><Input value={form.description ?? ""} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
         <div className="flex items-center justify-between">
           <Label>الباقة فعّالة</Label>
           <Switch checked={form.is_active} onCheckedChange={(v) => setForm({ ...form, is_active: v })} />

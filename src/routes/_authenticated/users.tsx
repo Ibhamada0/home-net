@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db, uid, type Customer } from "@/lib/local-db";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,11 +18,11 @@ export const Route = createFileRoute("/_authenticated/users")({
   head: () => ({ meta: [{ title: "مستخدمي PPPoE | Home Net" }] }),
 });
 
-type Customer = {
-  id: string; username: string; password: string; full_name: string; phone: string | null;
-  service_type: string; package_id: string | null; status: string; ip_address: string | null;
-  expire_at: string | null; address: string | null;
-};
+async function joinPackage<T extends { package_id: string | null }>(rows: T[]) {
+  const pkgs = await db.packages.toArray();
+  const map = new Map(pkgs.map((p) => [p.id, p]));
+  return rows.map((r) => ({ ...r, packages: r.package_id ? map.get(r.package_id) ?? null : null }));
+}
 
 function UsersPage() {
   const [search, setSearch] = useState("");
@@ -33,43 +33,33 @@ function UsersPage() {
   const { data: customers = [], isLoading } = useQuery({
     queryKey: ["customers", "pppoe"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("customers")
-        .select("*, packages(name, speed_down_mbps, price)")
-        .eq("service_type", "pppoe")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
+      const rows = (await db.customers.where("service_type").equals("pppoe").toArray())
+        .sort((a, b) => b.created_at.localeCompare(a.created_at));
+      return joinPackage(rows);
     },
   });
 
   const { data: packages = [] } = useQuery({
     queryKey: ["packages-pppoe"],
-    queryFn: async () => {
-      const { data } = await supabase.from("packages").select("*").eq("service_type", "pppoe").eq("is_active", true);
-      return data ?? [];
-    },
+    queryFn: async () =>
+      (await db.packages.toArray()).filter((p) => p.service_type === "pppoe" && p.is_active),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("customers").delete().eq("id", id);
-      if (error) throw error;
-    },
+    mutationFn: async (id: string) => { await db.customers.delete(id); },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["customers"] }); toast.success("تم حذف المستخدم"); },
     onError: (e: Error) => toast.error(e.message),
   });
 
   const toggleMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error } = await supabase.from("customers").update({ status }).eq("id", id);
-      if (error) throw error;
+    mutationFn: async ({ id, status }: { id: string; status: Customer["status"] }) => {
+      await db.customers.update(id, { status });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["customers"] }); toast.success("تم تحديث الحالة"); },
   });
 
-  const filtered = customers.filter((c) =>
-    [c.username, c.full_name, c.phone, c.ip_address].some((v) => v?.toLowerCase().includes(search.toLowerCase()))
+  const filtered = customers.filter((c: any) =>
+    [c.username, c.full_name, c.phone, c.ip_address].some((v) => v?.toLowerCase?.().includes(search.toLowerCase()))
   );
 
   return (
@@ -157,20 +147,22 @@ function CustomerForm({ packages, editing, onClose }: { packages: any[]; editing
     address: editing?.address ?? "",
     package_id: editing?.package_id ?? "",
     ip_address: editing?.ip_address ?? "",
-    status: editing?.status ?? "active",
+    status: (editing?.status ?? "active") as Customer["status"],
   });
 
   const save = useMutation({
     mutationFn: async () => {
       const pkg = packages.find((p) => p.id === form.package_id);
       const expire_at = pkg ? new Date(Date.now() + pkg.duration_days * 24 * 3600 * 1000).toISOString() : null;
-      const payload = { ...form, service_type: "pppoe", package_id: form.package_id || null, expire_at };
+      const payload = { ...form, service_type: "pppoe" as const, package_id: form.package_id || null, expire_at };
       if (editing) {
-        const { error } = await supabase.from("customers").update(payload).eq("id", editing.id);
-        if (error) throw error;
+        await db.customers.update(editing.id, payload);
       } else {
-        const { error } = await supabase.from("customers").insert(payload);
-        if (error) throw error;
+        await db.customers.add({
+          id: uid(),
+          ...payload,
+          created_at: new Date().toISOString(),
+        });
       }
     },
     onSuccess: () => {
@@ -193,12 +185,12 @@ function CustomerForm({ packages, editing, onClose }: { packages: any[]; editing
         </div>
         <div className="space-y-2"><Label>الاسم الكامل</Label><Input required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2"><Label>الهاتف</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} dir="ltr" /></div>
-          <div className="space-y-2"><Label>IP (اختياري)</Label><Input value={form.ip_address} onChange={(e) => setForm({ ...form, ip_address: e.target.value })} dir="ltr" /></div>
+          <div className="space-y-2"><Label>الهاتف</Label><Input value={form.phone ?? ""} onChange={(e) => setForm({ ...form, phone: e.target.value })} dir="ltr" /></div>
+          <div className="space-y-2"><Label>IP (اختياري)</Label><Input value={form.ip_address ?? ""} onChange={(e) => setForm({ ...form, ip_address: e.target.value })} dir="ltr" /></div>
         </div>
         <div className="space-y-2">
           <Label>الباقة</Label>
-          <Select value={form.package_id} onValueChange={(v) => setForm({ ...form, package_id: v })}>
+          <Select value={form.package_id ?? ""} onValueChange={(v) => setForm({ ...form, package_id: v })}>
             <SelectTrigger><SelectValue placeholder="اختر باقة" /></SelectTrigger>
             <SelectContent>
               {packages.map((p) => (
@@ -207,7 +199,7 @@ function CustomerForm({ packages, editing, onClose }: { packages: any[]; editing
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2"><Label>العنوان</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
+        <div className="space-y-2"><Label>العنوان</Label><Input value={form.address ?? ""} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>إلغاء</Button>
           <Button type="submit" disabled={save.isPending}>{save.isPending ? "جارٍ الحفظ..." : "حفظ"}</Button>
