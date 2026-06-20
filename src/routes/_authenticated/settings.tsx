@@ -83,7 +83,7 @@ function SettingsPage() {
     <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold">إعدادات الراوتر</h1>
-        <p className="text-sm text-muted-foreground mt-1">اختر طريقة الربط مع MikroTik: محلي عبر منفذ الـ API أو سحابي مجاني عبر IP Cloud DDNS</p>
+        <p className="text-sm text-muted-foreground mt-1">اختر طريقة الربط مع MikroTik: محلي عبر منفذ الـ API أو عن بُعد مجاناً عبر Cloudflare Tunnel / ngrok</p>
       </div>
 
       <Card>
