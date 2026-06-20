@@ -219,6 +219,8 @@ export type Database = {
       }
       router_config: {
         Row: {
+          cloud_hostname: string | null
+          connection_mode: string
           created_at: string
           host: string
           id: string
@@ -232,6 +234,8 @@ export type Database = {
           username: string
         }
         Insert: {
+          cloud_hostname?: string | null
+          connection_mode?: string
           created_at?: string
           host: string
           id?: string
@@ -245,6 +249,8 @@ export type Database = {
           username: string
         }
         Update: {
+          cloud_hostname?: string | null
+          connection_mode?: string
           created_at?: string
           host?: string
           id?: string
