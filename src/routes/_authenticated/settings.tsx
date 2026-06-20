@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Router, Save, Info } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Router, Save, Info, Wifi, Cloud } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/settings")({
@@ -16,31 +17,52 @@ export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({ meta: [{ title: "إعدادات الراوتر | سيس-نت" }] }),
 });
 
+type Mode = "local" | "cloud";
+
 function SettingsPage() {
   const qc = useQueryClient();
   const { data: config } = useQuery({
     queryKey: ["router-config-edit"],
-    queryFn: async () => { const { data } = await supabase.from("router_config").select("*").maybeSingle(); return data; },
+    queryFn: async () => {
+      const { data } = await supabase.from("router_config").select("*").maybeSingle();
+      return data as any;
+    },
   });
 
   const [form, setForm] = useState({
-    name: "Main Router", host: "", port: 443, username: "admin", password: "", use_https: true, is_active: true,
+    name: "Main Router",
+    connection_mode: "local" as Mode,
+    host: "192.168.88.1",
+    port: 8728,
+    cloud_hostname: "",
+    username: "admin",
+    password: "",
+    use_https: false,
+    is_active: true,
   });
 
   useEffect(() => {
     if (config) setForm({
-      name: config.name, host: config.host, port: config.port, username: config.username,
-      password: config.password, use_https: config.use_https, is_active: config.is_active,
+      name: config.name,
+      connection_mode: (config.connection_mode ?? "local") as Mode,
+      host: config.host,
+      port: config.port,
+      cloud_hostname: config.cloud_hostname ?? "",
+      username: config.username,
+      password: config.password,
+      use_https: config.use_https,
+      is_active: config.is_active,
     });
   }, [config]);
 
   const save = useMutation({
     mutationFn: async () => {
+      const payload = { ...form };
       if (config) {
-        const { error } = await supabase.from("router_config").update(form).eq("id", config.id);
+        const { error } = await supabase.from("router_config").update(payload as any).eq("id", config.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("router_config").insert(form);
+        const { error } = await supabase.from("router_config").insert(payload as any);
         if (error) throw error;
       }
     },
@@ -48,21 +70,21 @@ function SettingsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const setMode = (m: Mode) => {
+    setForm((f) => ({
+      ...f,
+      connection_mode: m,
+      // Defaults per mode
+      port: m === "local" ? (f.use_https ? 443 : 8728) : (f.use_https ? 443 : 80),
+    }));
+  };
+
   return (
     <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold">إعدادات الراوتر</h1>
-        <p className="text-sm text-muted-foreground mt-1">إعداد الاتصال بـ MikroTik RouterOS عبر REST API</p>
+        <p className="text-sm text-muted-foreground mt-1">اختر طريقة الربط مع MikroTik: محلي عبر منفذ الـ API أو سحابي مجاني عبر IP Cloud DDNS</p>
       </div>
-
-      <Alert>
-        <Info className="size-4" />
-        <AlertTitle>ملاحظة مهمة</AlertTitle>
-        <AlertDescription className="text-xs leading-relaxed mt-2">
-          يتطلب RouterOS الإصدار 7.x أو أحدث مع تفعيل خدمة <code className="font-mono">www-ssl</code> أو <code className="font-mono">www</code>.
-          يجب أن يكون الراوتر متاحاً عبر الإنترنت أو نفس الشبكة. لضمان الأمان استخدم HTTPS وأنشئ مستخدم API منفصل بصلاحيات محددة.
-        </AlertDescription>
-      </Alert>
 
       <Card>
         <CardHeader>
@@ -70,29 +92,106 @@ function SettingsPage() {
             <div className="size-10 rounded-lg bg-primary/10 grid place-items-center"><Router className="size-5 text-primary" /></div>
             <div>
               <CardTitle>اتصال الراوتر</CardTitle>
-              <CardDescription>بيانات الدخول إلى MikroTik RouterOS REST API</CardDescription>
+              <CardDescription>بيانات الدخول إلى MikroTik RouterOS</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={(e) => { e.preventDefault(); save.mutate(); }} className="space-y-4">
-            <div className="space-y-2"><Label>اسم الراوتر</Label><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2 space-y-2"><Label>عنوان IP أو دومين</Label><Input required placeholder="192.168.88.1" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} dir="ltr" /></div>
-              <div className="space-y-2"><Label>المنفذ</Label><Input type="number" required value={form.port} onChange={(e) => setForm({ ...form, port: +e.target.value })} dir="ltr" /></div>
+          <form onSubmit={(e) => { e.preventDefault(); save.mutate(); }} className="space-y-5">
+            <Tabs value={form.connection_mode} onValueChange={(v) => setMode(v as Mode)}>
+              <TabsList className="grid grid-cols-2 w-full">
+                <TabsTrigger value="local" className="gap-2"><Wifi className="size-4" /> محلي (LAN)</TabsTrigger>
+                <TabsTrigger value="cloud" className="gap-2"><Cloud className="size-4" /> سحابي مجاني</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="local" className="space-y-4 mt-4">
+                <Alert>
+                  <Info className="size-4" />
+                  <AlertTitle>الوضع المحلي</AlertTitle>
+                  <AlertDescription className="text-xs leading-relaxed mt-2">
+                    اتصال مباشر بـ MikroTik داخل نفس الشبكة عبر منفذ الـ API. فعّل الخدمة من
+                    <code className="font-mono mx-1">/ip service enable api</code>
+                    (المنفذ الافتراضي 8728) أو <code className="font-mono">api-ssl</code> (8729).
+                  </AlertDescription>
+                </Alert>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2 space-y-2">
+                    <Label>عنوان IP المحلي</Label>
+                    <Input required placeholder="192.168.88.1" value={form.host}
+                      onChange={(e) => setForm({ ...form, host: e.target.value })} dir="ltr" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>منفذ API</Label>
+                    <Input type="number" required value={form.port}
+                      onChange={(e) => setForm({ ...form, port: +e.target.value })} dir="ltr" />
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="cloud" className="space-y-4 mt-4">
+                <Alert>
+                  <Info className="size-4" />
+                  <AlertTitle>الوضع السحابي (مجاني بدون VPS)</AlertTitle>
+                  <AlertDescription className="text-xs leading-relaxed mt-2">
+                    يستخدم خدمة <strong>MikroTik IP Cloud</strong> المجانية للوصول للراوتر من أي مكان.
+                    فعّلها من الراوتر:
+                    <code className="block font-mono mt-1 ltr:text-left" dir="ltr">/ip cloud set ddns-enabled=yes</code>
+                    ثم انسخ العنوان الذي يظهر مثل <code className="font-mono">xxxxxxxx.sn.mynetname.net</code> وضعه أدناه.
+                    تأكد من فتح منفذ الـ API على الجدار الناري.
+                  </AlertDescription>
+                </Alert>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2 space-y-2">
+                    <Label>عنوان MikroTik السحابي (DDNS)</Label>
+                    <Input required={form.connection_mode === "cloud"} placeholder="xxxxxxxx.sn.mynetname.net"
+                      value={form.cloud_hostname}
+                      onChange={(e) => setForm({ ...form, cloud_hostname: e.target.value, host: e.target.value })}
+                      dir="ltr" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>المنفذ</Label>
+                    <Input type="number" required value={form.port}
+                      onChange={(e) => setForm({ ...form, port: +e.target.value })} dir="ltr" />
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+
+            <div className="space-y-2">
+              <Label>اسم الراوتر</Label>
+              <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
+
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2"><Label>اسم المستخدم</Label><Input required value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} dir="ltr" /></div>
-              <div className="space-y-2"><Label>كلمة المرور</Label><Input type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} dir="ltr" /></div>
+              <div className="space-y-2">
+                <Label>اسم المستخدم</Label>
+                <Input required value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} dir="ltr" />
+              </div>
+              <div className="space-y-2">
+                <Label>كلمة المرور</Label>
+                <Input type="password" required value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} dir="ltr" />
+              </div>
             </div>
+
             <div className="flex items-center justify-between pt-2 border-t">
-              <div><Label>استخدام HTTPS</Label><p className="text-xs text-muted-foreground">موصى به للأمان</p></div>
-              <Switch checked={form.use_https} onCheckedChange={(v) => setForm({ ...form, use_https: v, port: v ? 443 : 80 })} />
+              <div>
+                <Label>استخدام TLS/SSL</Label>
+                <p className="text-xs text-muted-foreground">
+                  {form.connection_mode === "local" ? "api-ssl منفذ 8729" : "موصى به لتشفير الاتصال السحابي"}
+                </p>
+              </div>
+              <Switch checked={form.use_https}
+                onCheckedChange={(v) => setForm({
+                  ...form, use_https: v,
+                  port: form.connection_mode === "local" ? (v ? 8729 : 8728) : (v ? 443 : 80),
+                })} />
             </div>
+
             <div className="flex items-center justify-between">
               <div><Label>الاتصال مفعّل</Label><p className="text-xs text-muted-foreground">استخدم هذا الراوتر كاتصال نشط</p></div>
               <Switch checked={form.is_active} onCheckedChange={(v) => setForm({ ...form, is_active: v })} />
             </div>
+
             <Button type="submit" className="w-full" disabled={save.isPending}>
               <Save className="size-4 ml-1" /> {save.isPending ? "جارٍ الحفظ..." : "حفظ الإعدادات"}
             </Button>
