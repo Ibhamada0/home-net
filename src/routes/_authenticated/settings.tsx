@@ -83,7 +83,7 @@ function SettingsPage() {
     <div className="p-6 md:p-8 max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold">إعدادات الراوتر</h1>
-        <p className="text-sm text-muted-foreground mt-1">اختر طريقة الربط مع MikroTik: محلي عبر منفذ الـ API أو سحابي مجاني عبر IP Cloud DDNS</p>
+        <p className="text-sm text-muted-foreground mt-1">اختر طريقة الربط مع MikroTik: محلي عبر منفذ الـ API أو عن بُعد مجاناً عبر Cloudflare Tunnel / ngrok</p>
       </div>
 
       <Card>
@@ -101,7 +101,7 @@ function SettingsPage() {
             <Tabs value={form.connection_mode} onValueChange={(v) => setMode(v as Mode)}>
               <TabsList className="grid grid-cols-2 w-full">
                 <TabsTrigger value="local" className="gap-2"><Wifi className="size-4" /> محلي (LAN)</TabsTrigger>
-                <TabsTrigger value="cloud" className="gap-2"><Cloud className="size-4" /> سحابي مجاني</TabsTrigger>
+                <TabsTrigger value="cloud" className="gap-2"><Cloud className="size-4" /> نفق مجاني (Tunnel)</TabsTrigger>
               </TabsList>
 
               <TabsContent value="local" className="space-y-4 mt-4">
@@ -131,19 +131,29 @@ function SettingsPage() {
               <TabsContent value="cloud" className="space-y-4 mt-4">
                 <Alert>
                   <Info className="size-4" />
-                  <AlertTitle>الوضع السحابي (مجاني بدون VPS)</AlertTitle>
-                  <AlertDescription className="text-xs leading-relaxed mt-2">
-                    يستخدم خدمة <strong>MikroTik IP Cloud</strong> المجانية للوصول للراوتر من أي مكان.
-                    فعّلها من الراوتر:
-                    <code className="block font-mono mt-1 ltr:text-left" dir="ltr">/ip cloud set ddns-enabled=yes</code>
-                    ثم انسخ العنوان الذي يظهر مثل <code className="font-mono">xxxxxxxx.sn.mynetname.net</code> وضعه أدناه.
-                    تأكد من فتح منفذ الـ API على الجدار الناري.
+                  <AlertTitle>عن بُعد عبر نفق مجاني (بدون VPS وبدون IP عام)</AlertTitle>
+                  <AlertDescription className="text-xs leading-relaxed mt-2 space-y-2">
+                    <p>اختر إحدى الخدمتين المجانيتين على جهاز داخل نفس شبكة الراوتر (راوتر آخر، Raspberry Pi، أو أي PC):</p>
+                    <div>
+                      <strong>1) Cloudflare Tunnel (مجاني دائم):</strong>
+                      <code className="block font-mono mt-1 ltr:text-left" dir="ltr">
+                        cloudflared tunnel --url tcp://192.168.88.1:8728
+                      </code>
+                      <p className="mt-1">سيعطيك رابط مثل <code className="font-mono">xxx.trycloudflare.com</code> — استخدمه عبر <code className="font-mono">cloudflared access tcp</code> على جانب الخادم.</p>
+                    </div>
+                    <div>
+                      <strong>2) ngrok (مجاني):</strong>
+                      <code className="block font-mono mt-1 ltr:text-left" dir="ltr">
+                        ngrok tcp 192.168.88.1:8728
+                      </code>
+                      <p className="mt-1">سيعطيك عنواناً مثل <code className="font-mono">0.tcp.ngrok.io</code> ومنفذاً مثل <code className="font-mono">17234</code> — ضعهما أدناه.</p>
+                    </div>
                   </AlertDescription>
                 </Alert>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="col-span-2 space-y-2">
-                    <Label>عنوان MikroTik السحابي (DDNS)</Label>
-                    <Input required={form.connection_mode === "cloud"} placeholder="xxxxxxxx.sn.mynetname.net"
+                    <Label>عنوان النفق (Tunnel Host)</Label>
+                    <Input required={form.connection_mode === "cloud"} placeholder="0.tcp.ngrok.io"
                       value={form.cloud_hostname}
                       onChange={(e) => setForm({ ...form, cloud_hostname: e.target.value, host: e.target.value })}
                       dir="ltr" />
@@ -177,7 +187,7 @@ function SettingsPage() {
               <div>
                 <Label>استخدام TLS/SSL</Label>
                 <p className="text-xs text-muted-foreground">
-                  {form.connection_mode === "local" ? "api-ssl منفذ 8729" : "موصى به لتشفير الاتصال السحابي"}
+                  {form.connection_mode === "local" ? "api-ssl منفذ 8729" : "موصى به مع Cloudflare Tunnel"}
                 </p>
               </div>
               <Switch checked={form.use_https}
