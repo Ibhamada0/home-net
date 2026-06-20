@@ -11,7 +11,7 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/auth")({
   component: AuthPage,
-  head: () => ({ meta: [{ title: "تسجيل الدخول | سيس-نت" }] }),
+  head: () => ({ meta: [{ title: "تسجيل الدخول | Home Net" }] }),
 });
 
 // Supabase requires an email — we synthesize one from the username.
@@ -60,7 +60,7 @@ function AuthPage() {
           <div className="size-14 bg-primary rounded-2xl flex items-center justify-center ring-4 ring-primary/10 mb-4">
             <Wifi className="size-7 text-primary-foreground" />
           </div>
-          <h1 className="text-2xl font-bold">سيس-نت</h1>
+          <h1 className="text-2xl font-bold">Home Net</h1>
           <p className="text-sm text-muted-foreground mt-1">نظام إدارة راوترات مايكروتيك</p>
         </div>
 

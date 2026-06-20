@@ -15,7 +15,7 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/packages")({
   component: PackagesPage,
-  head: () => ({ meta: [{ title: "الباقات | سيس-نت" }] }),
+  head: () => ({ meta: [{ title: "الباقات | Home Net" }] }),
 });
 
 function PackagesPage() {

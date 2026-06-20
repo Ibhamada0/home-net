@@ -14,7 +14,7 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   component: SettingsPage,
-  head: () => ({ meta: [{ title: "إعدادات الراوتر | سيس-نت" }] }),
+  head: () => ({ meta: [{ title: "إعدادات الراوتر | Home Net" }] }),
 });
 
 type Mode = "local" | "cloud";
