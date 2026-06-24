@@ -9,6 +9,7 @@
 
 import http from "node:http";
 import net from "node:net";
+import crypto from "node:crypto";
 import { URL } from "node:url";
 
 const PORT          = Number(process.env.PORT          || 8080);
@@ -136,7 +137,7 @@ function sentenceToObject(words) {
   return obj;
 }
 
-async function connectApi() {
+async function openApiSocket() {
   const socket = net.connect({ host: ROUTER_HOST, port: ROUTER_API_PORT });
   socket.setTimeout(15000);
   await new Promise((resolve, reject) => {
@@ -144,24 +145,57 @@ async function connectApi() {
     socket.once("error", reject);
     socket.once("timeout", () => reject(new Error("RouterOS API timeout")));
   });
+  return socket;
+}
 
-  const run = async (words) => {
-    writeSentence(socket, words);
-    const rows = [];
-    while (true) {
-      const sentence = await readSentence(socket);
-      const type = sentence[0];
-      if (type === "!done" || type === "!empty") return rows;
-      if (type === "!trap" || type === "!fatal") {
-        const message = sentenceToObject(sentence).message || sentence.join(" ");
-        throw new Error(message);
+function createApiClient(socket) {
+  return {
+    run: async (words) => {
+      writeSentence(socket, words);
+      const rows = [];
+      while (true) {
+        const sentence = await readSentence(socket);
+        const type = sentence[0];
+        if (type === "!done" || type === "!empty") return rows;
+        if (type === "!trap" || type === "!fatal") {
+          const message = sentenceToObject(sentence).message || sentence.join(" ");
+          while (type === "!trap") {
+            const rest = await readSentence(socket).catch(() => []);
+            if (rest[0] === "!done") break;
+          }
+          throw new Error(message);
+        }
+        if (type === "!re") rows.push(sentenceToObject(sentence));
       }
-      if (type === "!re") rows.push(sentenceToObject(sentence));
-    }
+    },
+    close: () => socket.end(),
   };
+}
 
-  await run(["/login", `=name=${ROUTER_USER}`, `=password=${ROUTER_PASS}`]);
-  return { run, close: () => socket.end() };
+async function connectApi() {
+  let socket = await openApiSocket();
+  let client = createApiClient(socket);
+
+  try {
+    await client.run(["/login", `=name=${ROUTER_USER}`, `=password=${ROUTER_PASS}`]);
+    return client;
+  } catch {
+    client.close();
+  }
+
+  socket = await openApiSocket();
+  client = createApiClient(socket);
+
+  const challenge = (await client.run(["/login"]))[0]?.ret;
+  if (!challenge) throw new Error("RouterOS API login challenge was not returned");
+
+  const response = "00" + crypto
+    .createHash("md5")
+    .update(Buffer.concat([Buffer.from([0]), Buffer.from(ROUTER_PASS), Buffer.from(challenge, "hex")]))
+    .digest("hex");
+
+  await client.run(["/login", `=name=${ROUTER_USER}`, `=response=${response}`]);
+  return client;
 }
 
 function parseRestPath(url) {
