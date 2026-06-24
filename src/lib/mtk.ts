@@ -1,16 +1,23 @@
 // MikroTik REST helper — calls the local proxy.
 import { db } from "./local-db";
 
-const FALLBACK = "http://localhost:8080";
+function defaultFallback(): string {
+  if (typeof window !== "undefined" && window.location?.hostname) {
+    return `${window.location.protocol}//${window.location.hostname}:8080`;
+  }
+  return "http://localhost:8080";
+}
 
 export async function getProxyUrl(): Promise<string> {
+  // localStorage takes priority so the user can override per-device.
+  const ls = typeof window !== "undefined" ? localStorage.getItem("homenet_proxy_url") : null;
+  if (ls) return ls;
   try {
     const cfg = await db.router_config.toArray();
     const active = cfg.find((c) => c.is_active) ?? cfg[0];
-    return active?.proxy_url || localStorage.getItem("homenet_proxy_url") || FALLBACK;
-  } catch {
-    return FALLBACK;
-  }
+    if (active?.proxy_url) return active.proxy_url;
+  } catch { /* ignore */ }
+  return defaultFallback();
 }
 
 export async function mtk(path: string, init?: RequestInit): Promise<any> {
