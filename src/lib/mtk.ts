@@ -1,5 +1,5 @@
-// MikroTik REST helper — calls the local proxy.
-import { db } from "./local-db";
+// MikroTik REST helper — calls the local proxy with per-request credentials (Mikhmon-style).
+import { db, type RouterConfig } from "./local-db";
 
 function defaultFallback(): string {
   if (typeof window !== "undefined" && window.location?.hostname) {
@@ -8,23 +8,44 @@ function defaultFallback(): string {
   return "http://localhost:8080";
 }
 
-export async function getProxyUrl(): Promise<string> {
-  // localStorage takes priority so the user can override per-device.
-  const ls = typeof window !== "undefined" ? localStorage.getItem("homenet_proxy_url") : null;
-  if (ls) return ls;
+export async function getActiveRouter(): Promise<RouterConfig | null> {
   try {
     const cfg = await db.router_config.toArray();
-    const active = cfg.find((c) => c.is_active) ?? cfg[0];
-    if (active?.proxy_url) return active.proxy_url;
-  } catch { /* ignore */ }
+    return cfg.find((c) => c.is_active) ?? cfg[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getProxyUrl(): Promise<string> {
+  const ls = typeof window !== "undefined" ? localStorage.getItem("homenet_proxy_url") : null;
+  if (ls) return ls;
+  const active = await getActiveRouter();
+  if (active?.proxy_url) return active.proxy_url;
   return defaultFallback();
 }
 
+export function routerHeaders(c: RouterConfig | null): Record<string, string> {
+  if (!c) return {};
+  return {
+    "X-MT-Host":     c.host,
+    "X-MT-Port":     String(c.port),
+    "X-MT-User":     c.username,
+    "X-MT-Pass":     c.password,
+    "X-MT-Https":    c.use_https ? "true" : "false",
+    "X-MT-Api-Port": "8728",
+  };
+}
+
 export async function mtk(path: string, init?: RequestInit): Promise<any> {
-  const proxy = await getProxyUrl();
+  const [proxy, active] = await Promise.all([getProxyUrl(), getActiveRouter()]);
   const res = await fetch(`${proxy}${path}`, {
     ...init,
-    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+    headers: {
+      "content-type": "application/json",
+      ...routerHeaders(active),
+      ...(init?.headers ?? {}),
+    },
   });
   if (!res.ok) {
     throw new Error(
@@ -32,4 +53,13 @@ export async function mtk(path: string, init?: RequestInit): Promise<any> {
     );
   }
   return res.status === 204 ? null : await res.json();
+}
+
+// Mikhmon-style connect test: returns router identity (or throws).
+export async function connectRouter(c: RouterConfig, proxyUrl?: string): Promise<{ identity: any; via: string }> {
+  const proxy = proxyUrl || c.proxy_url || defaultFallback();
+  const res = await fetch(`${proxy}/connect`, { headers: routerHeaders(c) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || `Connect failed (${res.status})`);
+  return data;
 }

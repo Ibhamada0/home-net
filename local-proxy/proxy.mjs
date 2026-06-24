@@ -1,35 +1,48 @@
-// Home Net - Local MikroTik proxy
-// Runs on your machine, forwards REST calls to the router with CORS enabled.
-// If RouterOS REST is unavailable, it falls back to the classic RouterOS API.
+// Home Net - Local MikroTik proxy (Mikhmon-style)
+// Stateless: credentials come from the browser per-request via X-MT-* headers.
+// Env vars are kept as fallback defaults only (optional).
 //
 // Usage:
-//   1) Edit ROUTER_* below (or set env vars)
-//   2) node proxy.mjs
-//   3) The app calls http://localhost:8080/rest/...
+//   node proxy.mjs
+//   The app sends: X-MT-Host, X-MT-Port, X-MT-User, X-MT-Pass, X-MT-Https, X-MT-Api-Port
 
 import http from "node:http";
 import net from "node:net";
 import crypto from "node:crypto";
 import { URL } from "node:url";
 
-const PORT          = Number(process.env.PORT          || 8080);
-const ROUTER_HOST   = process.env.ROUTER_HOST   || "10.0.0.1";
-const ROUTER_PORT   = Number(process.env.ROUTER_PORT   || 80);   // REST = 80 (http) or 443 (https)
-const ROUTER_API_PORT = Number(process.env.ROUTER_API_PORT || 8728); // Classic API = 8728
-const ROUTER_HTTPS  = (process.env.ROUTER_HTTPS  || "false") === "true";
-const ROUTER_USER   = process.env.ROUTER_USER   || "admin";
-const ROUTER_PASS   = process.env.ROUTER_PASS   || "";
-const USE_API_FALLBACK = (process.env.ROUTER_API_FALLBACK || "true") !== "false";
+const PORT = Number(process.env.PORT || 8080);
 
-const auth = "Basic " + Buffer.from(`${ROUTER_USER}:${ROUTER_PASS}`).toString("base64");
+// Optional fallback defaults (only used if the browser didn't send headers).
+const DEF = {
+  host:    process.env.ROUTER_HOST    || "",
+  port:    Number(process.env.ROUTER_PORT    || 80),
+  apiPort: Number(process.env.ROUTER_API_PORT || 8728),
+  https:   (process.env.ROUTER_HTTPS  || "false") === "true",
+  user:    process.env.ROUTER_USER    || "admin",
+  pass:    process.env.ROUTER_PASS    || "",
+};
+const USE_API_FALLBACK = (process.env.ROUTER_API_FALLBACK || "true") !== "false";
 
 const CORS = {
   "Access-Control-Allow-Origin":  "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-MT-Host, X-MT-Port, X-MT-User, X-MT-Pass, X-MT-Https, X-MT-Api-Port",
   "Access-Control-Max-Age":       "86400",
 };
 
+function readCreds(req) {
+  const h = req.headers;
+  const host = (h["x-mt-host"] || DEF.host || "").toString().trim();
+  const user = (h["x-mt-user"] || DEF.user || "").toString();
+  const pass = (h["x-mt-pass"] ?? DEF.pass ?? "").toString();
+  const port = Number(h["x-mt-port"] || DEF.port);
+  const apiPort = Number(h["x-mt-api-port"] || DEF.apiPort);
+  const https = (h["x-mt-https"] || (DEF.https ? "true" : "false")) === "true";
+  return { host, user, pass, port, apiPort, https };
+}
+
+// ---------- RouterOS classic API (port 8728) ----------
 function encodeLength(length) {
   if (length < 0x80) return Buffer.from([length]);
   if (length < 0x4000) return Buffer.from([(length >> 8) | 0x80, length & 0xff]);
@@ -89,11 +102,9 @@ async function readExact(socket, length) {
       chunks.push(chunk);
       total += chunk.length;
       if (total < length) return;
-
       socket.off("data", onData);
       socket.off("error", onError);
       socket.off("close", onClose);
-
       const all = Buffer.concat(chunks, total);
       const wanted = all.subarray(0, length);
       const extra = all.subarray(length);
@@ -137,8 +148,8 @@ function sentenceToObject(words) {
   return obj;
 }
 
-async function openApiSocket() {
-  const socket = net.connect({ host: ROUTER_HOST, port: ROUTER_API_PORT });
+async function openApiSocket(host, apiPort) {
+  const socket = net.connect({ host, port: apiPort });
   socket.setTimeout(15000);
   await new Promise((resolve, reject) => {
     socket.once("connect", resolve);
@@ -172,29 +183,24 @@ function createApiClient(socket) {
   };
 }
 
-async function connectApi() {
-  let socket = await openApiSocket();
+async function connectApi(c) {
+  let socket = await openApiSocket(c.host, c.apiPort);
   let client = createApiClient(socket);
-
   try {
-    await client.run(["/login", `=name=${ROUTER_USER}`, `=password=${ROUTER_PASS}`]);
+    await client.run(["/login", `=name=${c.user}`, `=password=${c.pass}`]);
     return client;
   } catch {
     client.close();
   }
-
-  socket = await openApiSocket();
+  socket = await openApiSocket(c.host, c.apiPort);
   client = createApiClient(socket);
-
   const challenge = (await client.run(["/login"]))[0]?.ret;
   if (!challenge) throw new Error("RouterOS API login challenge was not returned");
-
   const response = "00" + crypto
     .createHash("md5")
-    .update(Buffer.concat([Buffer.from([0]), Buffer.from(ROUTER_PASS), Buffer.from(challenge, "hex")]))
+    .update(Buffer.concat([Buffer.from([0]), Buffer.from(c.pass), Buffer.from(challenge, "hex")]))
     .digest("hex");
-
-  await client.run(["/login", `=name=${ROUTER_USER}`, `=response=${response}`]);
+  await client.run(["/login", `=name=${c.user}`, `=response=${response}`]);
   return client;
 }
 
@@ -208,11 +214,11 @@ function parseRestPath(url) {
   return { parsed, menu, id };
 }
 
-async function apiFallback(req, body) {
+async function apiFallback(req, body, creds) {
   const parsed = parseRestPath(req.url || "");
   if (!parsed) throw new Error("Only /rest/* routes can use RouterOS API fallback");
 
-  const client = await connectApi();
+  const client = await connectApi(creds);
   try {
     if (req.method === "GET") {
       const words = [`${parsed.menu}/print`];
@@ -221,7 +227,6 @@ async function apiFallback(req, body) {
       }
       return await client.run(words);
     }
-
     if (req.method === "PUT" || req.method === "POST") {
       const payload = body?.length ? JSON.parse(body.toString("utf8")) : {};
       const words = [`${parsed.menu}/add`];
@@ -231,13 +236,11 @@ async function apiFallback(req, body) {
       await client.run(words);
       return null;
     }
-
     if (req.method === "DELETE") {
       if (!parsed.id) throw new Error("DELETE requires a RouterOS .id in the URL");
       await client.run([`${parsed.menu}/remove`, `=.id=${parsed.id}`]);
       return null;
     }
-
     throw new Error(`Unsupported method for RouterOS API fallback: ${req.method}`);
   } finally {
     client.close();
@@ -250,15 +253,48 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
-  // Health check
+  // Health: simple ping (no creds needed)
   if (req.url === "/health") {
     res.writeHead(200, { ...CORS, "content-type": "application/json" });
-    return res.end(JSON.stringify({ ok: true, router: `${ROUTER_HOST}:${ROUTER_PORT}`, apiFallback: USE_API_FALLBACK ? `${ROUTER_HOST}:${ROUTER_API_PORT}` : false }));
+    return res.end(JSON.stringify({ ok: true, version: "2-mikhmon", message: "send X-MT-* headers per request" }));
+  }
+
+  const creds = readCreds(req);
+
+  // Connect test: tries REST first, then API fallback. Returns identity.
+  if (req.url === "/connect" || req.url === "/connect/") {
+    try {
+      if (!creds.host) throw new Error("Missing X-MT-Host");
+      const auth = "Basic " + Buffer.from(`${creds.user}:${creds.pass}`).toString("base64");
+      const scheme = creds.https ? "https" : "http";
+      let identity = null, via = null;
+      try {
+        const r = await fetch(`${scheme}://${creds.host}:${creds.port}/rest/system/identity`, {
+          headers: { authorization: auth },
+        });
+        if (r.ok) { identity = await r.json(); via = "rest"; }
+      } catch { /* fall through */ }
+      if (!identity) {
+        const client = await connectApi(creds);
+        try {
+          const rows = await client.run(["/system/identity/print"]);
+          identity = rows[0] || {};
+          via = "api";
+        } finally { client.close(); }
+      }
+      res.writeHead(200, { ...CORS, "content-type": "application/json" });
+      return res.end(JSON.stringify({ ok: true, via, identity, host: creds.host }));
+    } catch (e) {
+      res.writeHead(502, { ...CORS, "content-type": "application/json" });
+      return res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
+    }
   }
 
   try {
-    const scheme = ROUTER_HTTPS ? "https" : "http";
-    const target = `${scheme}://${ROUTER_HOST}:${ROUTER_PORT}${req.url}`;
+    if (!creds.host) throw new Error("Missing X-MT-Host header (configure the router in Settings).");
+    const auth = "Basic " + Buffer.from(`${creds.user}:${creds.pass}`).toString("base64");
+    const scheme = creds.https ? "https" : "http";
+    const target = `${scheme}://${creds.host}:${creds.port}${req.url}`;
 
     let body;
     if (req.method !== "GET" && req.method !== "HEAD") {
@@ -271,11 +307,11 @@ const server = http.createServer(async (req, res) => {
       method:  req.method,
       headers: { "content-type": "application/json", authorization: auth },
       body,
-    });
+    }).catch((e) => { throw new Error(`Cannot reach router REST (${creds.host}:${creds.port}): ${e.message}`); });
 
     const text = await upstream.text();
-    if (upstream.status === 404 && USE_API_FALLBACK && req.url?.startsWith("/rest/")) {
-      const fallback = await apiFallback(req, body);
+    if ((upstream.status === 404 || upstream.status === 501) && USE_API_FALLBACK && req.url?.startsWith("/rest/")) {
+      const fallback = await apiFallback(req, body, creds);
       const status = fallback === null ? 204 : 200;
       res.writeHead(status, { ...CORS, "content-type": "application/json" });
       return res.end(fallback === null ? "" : JSON.stringify(fallback));
@@ -287,12 +323,29 @@ const server = http.createServer(async (req, res) => {
     });
     res.end(text);
   } catch (e) {
+    // Try API fallback as last resort if REST itself failed to connect.
+    if (USE_API_FALLBACK && req.url?.startsWith("/rest/") && creds.host) {
+      try {
+        const chunks = [];
+        if (req.method !== "GET" && req.method !== "HEAD") {
+          for await (const c of req) chunks.push(c);
+        }
+        const body = Buffer.concat(chunks);
+        const fallback = await apiFallback(req, body, creds);
+        const status = fallback === null ? 204 : 200;
+        res.writeHead(status, { ...CORS, "content-type": "application/json" });
+        return res.end(fallback === null ? "" : JSON.stringify(fallback));
+      } catch (e2) {
+        res.writeHead(502, { ...CORS, "content-type": "application/json" });
+        return res.end(JSON.stringify({ error: String(e2?.message || e2) }));
+      }
+    }
     res.writeHead(502, { ...CORS, "content-type": "application/json" });
     res.end(JSON.stringify({ error: String(e?.message || e) }));
   }
 });
 
 server.listen(PORT, () => {
-  console.log(`Home Net proxy → http://localhost:${PORT}`);
-  console.log(`Forwarding to  → ${ROUTER_HTTPS ? "https" : "http"}://${ROUTER_HOST}:${ROUTER_PORT}`);
+  console.log(`Home Net proxy (Mikhmon-style) → http://localhost:${PORT}`);
+  console.log(`Stateless: credentials are sent per-request from the browser.`);
 });
