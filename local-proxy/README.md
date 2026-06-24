@@ -1,16 +1,18 @@
 # Home Net - Local MikroTik Proxy
 
 بروكسي محلي صغير يخلي تطبيق Home Net يكلم الراوتر من المتصفح مباشرة
-(يضيف CORS ويمرر طلبات REST API).
+(يضيف CORS ويمرر طلبات REST API، ولو REST رجّع 404 يستخدم RouterOS API القديم تلقائياً).
 
 ## المتطلبات
 - Node.js 18+
 - جهازك على نفس شبكة الراوتر
-- تفعيل REST API على الراوتر:
+- تفعيل REST API أو RouterOS API على الراوتر:
   ```
   /ip service enable www       (HTTP بورت 80)
   أو
   /ip service enable www-ssl   (HTTPS بورت 443)
+  أو
+  /ip service enable api       (API قديم بورت 8728)
   ```
 
 ## التشغيل (Windows / Mac / Linux)
@@ -20,10 +22,10 @@ cd local-proxy
 
 # عيّن بيانات الراوتر (مرة واحدة لكل جلسة)
 # Windows PowerShell:
-$env:ROUTER_HOST="10.0.0.1"; $env:ROUTER_PORT="80"; $env:ROUTER_USER="admin"; $env:ROUTER_PASS="YOUR_PASSWORD"
+$env:ROUTER_HOST="10.0.0.1"; $env:ROUTER_PORT="80"; $env:ROUTER_API_PORT="8728"; $env:ROUTER_USER="admin"; $env:ROUTER_PASS="YOUR_PASSWORD"
 
 # Linux/Mac:
-export ROUTER_HOST=10.0.0.1 ROUTER_PORT=80 ROUTER_USER=admin ROUTER_PASS=YOUR_PASSWORD
+export ROUTER_HOST=10.0.0.1 ROUTER_PORT=80 ROUTER_API_PORT=8728 ROUTER_USER=admin ROUTER_PASS=YOUR_PASSWORD
 
 node proxy.mjs
 ```
@@ -47,3 +49,5 @@ npm run dev
 ```bash
 curl http://localhost:8080/rest/system/resource
 ```
+
+لو ظهر 404 من REST، البروكسي سيجرب بورت 8728 تلقائياً بشرط تفعيل خدمة `api` على الراوتر.
