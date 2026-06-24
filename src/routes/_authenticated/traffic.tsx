@@ -12,7 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
-import { Activity, ArrowDownToLine, ArrowUpFromLine, Crown, RefreshCw, Shield, Trash2, Plus } from "lucide-react";
+import { Activity, ArrowDownToLine, ArrowUpFromLine, Crown, RefreshCw, Shield, Trash2, Plus, Database } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_authenticated/traffic")({
@@ -25,6 +25,10 @@ function fmtBytes(n: number) {
   const u = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(n) / Math.log(1024));
   return `${(n / Math.pow(1024, i)).toFixed(2)} ${u[i]}`;
+}
+
+function toGB(n: number) {
+  return (n / (1024 ** 3)).toFixed(2);
 }
 
 function TrafficPage() {
@@ -211,17 +215,26 @@ function TrafficPage() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card className="border-primary/40 bg-primary/5">
             <CardHeader className="pb-2">
-              <CardDescription className="flex items-center gap-2"><ArrowDownToLine className="size-4" /> إجمالي التحميل</CardDescription>
-              <CardTitle className="text-2xl">{fmtBytes(totalDown)}</CardTitle>
+              <CardDescription className="flex items-center gap-2"><Database className="size-4 text-primary" /> إجمالي الاستهلاك</CardDescription>
+              <CardTitle className="text-3xl text-primary">{toGB(totalDown + totalUp)} <span className="text-base font-normal">GB</span></CardTitle>
+              <div className="text-xs text-muted-foreground pt-1">{fmtBytes(totalDown + totalUp)}</div>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardDescription className="flex items-center gap-2"><ArrowUpFromLine className="size-4" /> إجمالي الرفع</CardDescription>
-              <CardTitle className="text-2xl">{fmtBytes(totalUp)}</CardTitle>
+              <CardDescription className="flex items-center gap-2"><ArrowDownToLine className="size-4" /> التحميل</CardDescription>
+              <CardTitle className="text-2xl">{toGB(totalDown)} <span className="text-sm font-normal">GB</span></CardTitle>
+              <div className="text-xs text-muted-foreground pt-1">{fmtBytes(totalDown)}</div>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription className="flex items-center gap-2"><ArrowUpFromLine className="size-4" /> الرفع</CardDescription>
+              <CardTitle className="text-2xl">{toGB(totalUp)} <span className="text-sm font-normal">GB</span></CardTitle>
+              <div className="text-xs text-muted-foreground pt-1">{fmtBytes(totalUp)}</div>
             </CardHeader>
           </Card>
           <Card>
@@ -229,7 +242,7 @@ function TrafficPage() {
               <CardDescription className="flex items-center gap-2"><Crown className="size-4 text-amber-500" /> أعلى مستهلك</CardDescription>
               <CardTitle className="text-lg">{top?.customers?.full_name ?? top?.customers?.username ?? "—"}</CardTitle>
               <div className="text-xs text-muted-foreground pt-1">
-                {top ? fmtBytes(Number(top.download_bytes) + Number(top.upload_bytes)) : "—"}
+                {top ? `${toGB(Number(top.download_bytes) + Number(top.upload_bytes))} GB` : "—"}
               </div>
             </CardHeader>
           </Card>
